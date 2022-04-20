@@ -19,12 +19,12 @@ public class PlantView extends ScrollPane {
 	public static final int BASE_HEIGHT = 1000; // in mm
 	public static final int SAFE_ZONE_WIDTH = 20;
 
-	private HeadView head;
+	private final HeadView head;
 	private final Positions plannedPositions;
 	private final Positions holes;
 	private boolean failed;
 
-	private Canvas canvas;
+	private final Canvas canvas;
 	private double zoom;
 
 	public PlantView(Positions plannedPositions, Positions punchedPositions) {

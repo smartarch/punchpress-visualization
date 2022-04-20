@@ -10,7 +10,7 @@ import javafx.scene.text.FontWeight;
 
 public class PunchStatusView extends ScrollPane {
 	
-	private VBox punchedBox;
+	private final VBox punchedBox;
 
 	private final Positions punchedPositions;
 

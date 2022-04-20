@@ -2,8 +2,6 @@ package d3s.ers.punchpressvisualization;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -14,10 +12,6 @@ import com.fazecast.jSerialComm.SerialPortMessageListener;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Application;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.scene.Node;
@@ -31,12 +25,32 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 public class Visualizer extends Application {
-	private static String punchInFileName = "punches.in";
-	private static String punchesOutFileName = "punches.out";
+	private static String punchInFileName = null;
+	private static String punchesOutFileName = null;
 	private static String commPort;
-	private static double zoom = 0.42;
 
-	private static Pattern commMsgRe = Pattern.compile("S(-?[0-9]+),(-?[0-9]+),([01]),([01])\n");
+	private static final double defaultZoom = 0.42;
+	
+	private static final Position[] defaultPunchesIn = new Position[] {
+		new Position(750, 460),
+		new Position(770, 460),
+		new Position(790, 460),
+		new Position(730, 460),
+		new Position(810, 500),
+		new Position(810, 520),
+		new Position(810, 540),
+		new Position(810, 480),
+		new Position(710, 500),
+		new Position(710, 520),
+		new Position(710, 540),
+		new Position(710, 480),
+		new Position(750, 560),
+		new Position(770, 560),
+		new Position(790, 560),
+		new Position(730, 560),
+	};
+
+	private static final Pattern commMsgRe = Pattern.compile("S(-?[0-9]+),(-?[0-9]+),([01]),([01])\n");
 
 	private BufferedWriter outWriter;
 
@@ -72,10 +86,6 @@ public class Visualizer extends Application {
 		if (!parseArgs(args)) {
 			System.exit(0);
 		}
-		if (Files.notExists(Paths.get(punchInFileName))) {
-			System.err.println(String.format("The file %s doesn't exist.", punchInFileName));
-			System.exit(1);
-		}
 
 		launch(args);
 	}
@@ -90,15 +100,14 @@ public class Visualizer extends Application {
 			i++;
 			if (i < args.length) {
 				String param = args[i];
-				if (option.equals("-i")) {
-					punchInFileName = param;
-				} else if (option.equals("-o")) {
-					punchesOutFileName = param;
-				} else if (option.equals("-c")) {
-					commPort = param;
-				} else {
-					printUsage();
-					return false;
+				switch (option) {
+					case "-i" -> punchInFileName = param;
+					case "-o" -> punchesOutFileName = param;
+					case "-c" -> commPort = param;
+					default -> {
+						printUsage();
+						return false;
+					}
 				}
 			} else {
 				printUsage();
@@ -182,8 +191,18 @@ public class Visualizer extends Application {
 	private void ensureComm() {
 		if (comm == null) {
 			try {
-				comm = SerialPort.getCommPort(commPort);
-				if (comm.openPort(0)) {
+				if (commPort == null) {
+					SerialPort[] availablePorts = SerialPort.getCommPorts();
+					for (var port: availablePorts) {
+						if (port.getPortDescription().equals("punchpresssim")) {
+							comm = port;
+						}
+					}
+				} else {
+					comm = SerialPort.getCommPort(commPort);
+				}
+
+				if (comm != null && comm.openPort(0)) {
 					CommMessageListener listener = new CommMessageListener();
 					comm.addDataListener(listener);
 
@@ -212,9 +231,11 @@ public class Visualizer extends Application {
 	}
 
 	@Override
-	public void start(Stage primaryStage) throws Exception {
+	public void start(Stage primaryStage) {
 		if (punchInFileName != null) {
 			plannedPositions.loadPositions(punchInFileName);
+		} else {
+			plannedPositions.setPositions(defaultPunchesIn);
 		}
 
 		BorderPane root = new BorderPane();
@@ -230,15 +251,9 @@ public class Visualizer extends Application {
 
 		openOutWriter();
 
-		timeline = new Timeline(new KeyFrame(Duration.millis(50), new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent event) {
-				update();
-			}
-		}));
+		timeline = new Timeline(new KeyFrame(Duration.millis(50), event -> update()));
 		timeline.setCycleCount(Timeline.INDEFINITE);
 		timeline.play();
-
 	}
 
 	@Override
@@ -254,11 +269,15 @@ public class Visualizer extends Application {
 
 	private void openOutWriter() {
 		closeOutWriter();
-		try {
-			outWriter = new BufferedWriter(new FileWriter(punchesOutFileName));
-		} catch (IOException e) {
-			closeOutWriter();
-			System.err.println(e.getMessage());
+		if (punchesOutFileName != null) {
+			try {
+				outWriter = new BufferedWriter(new FileWriter(punchesOutFileName));
+			} catch (IOException e) {
+				closeOutWriter();
+				System.err.println(e.getMessage());
+			}
+		} else {
+			outWriter = null;
 		}
 	}
 
@@ -308,7 +327,7 @@ public class Visualizer extends Application {
 		BorderPane pane = new BorderPane();
 
 		plantView = new PlantView(plannedPositions, punchedPositions);
-		plantView.setZoom(zoom);
+		plantView.setZoom(defaultZoom);
 		pane.setCenter(this.plantView);
 
 		Slider slider = new Slider();
@@ -320,18 +339,16 @@ public class Visualizer extends Application {
 		slider.setBlockIncrement(10);
 		pane.setBottom(slider);
 
-		slider.valueProperty().addListener(new ChangeListener<Number>() {
-			public void changed(ObservableValue<? extends Number> ov, Number oldValue, Number newValue) {
-				double position = (newValue.doubleValue() - 50) / 20;
-				double zoom = Math.pow(Math.abs(position), Math.log(10) / Math.log(5));
-				if (position > 0) {
-					zoom += 1;
-				} else {
-					zoom = 1 / (zoom + 1);
-				}
-
-				plantView.setZoom(zoom);
+		slider.valueProperty().addListener((ov, oldValue, newValue) -> {
+			double position = (newValue.doubleValue() - 50) / 20;
+			double zoom = Math.pow(Math.abs(position), Math.log(10) / Math.log(5));
+			if (position > 0) {
+				zoom += 1;
+			} else {
+				zoom = 1 / (zoom + 1);
 			}
+
+			plantView.setZoom(zoom);
 		});
 
 		return pane;

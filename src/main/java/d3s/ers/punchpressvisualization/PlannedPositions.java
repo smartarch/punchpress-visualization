@@ -18,6 +18,7 @@ package d3s.ers.punchpressvisualization;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,7 +36,7 @@ public class PlannedPositions extends Positions {
 			while(line != null){
 				Matcher positionMatcher = positionPattern.matcher(line);
 				if(!positionMatcher.matches() || positionMatcher.groupCount() != 2){
-					System.err.println(String.format("Unexpected element in file %s on line %d", file, lineNumber));
+					System.err.printf("Unexpected element in file %s on line %d%n", file, lineNumber);
 				} else {
 					int x = Integer.parseInt(positionMatcher.group(1));
 					int y = Integer.parseInt(positionMatcher.group(2));
@@ -49,5 +50,10 @@ public class PlannedPositions extends Positions {
 		} catch(IOException e){
 			System.err.println(e.getMessage());
 		}
+	}
+
+	public void setPositions(Position[] poss) {
+		positions.clear();
+		Collections.addAll(positions, poss);
 	}
 }
